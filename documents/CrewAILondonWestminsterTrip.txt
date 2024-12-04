@@ -1,0 +1,14 @@
+Metadata: Metadata: 
+
+Title: AI Trip Planning for London and Boston
+Author: John R Williams
+Date: April 11-14, 2024
+Interests: Fine dining, theatre, shows, events
+Location: London, England
+Accommodations: Westminster
+Transportation: Flight from Boston
+Local Expert: ChatGPT large language model
+Restaurants: Michelin star restaurants, Nobu
+Special Recommendations: Phantom of the Opera, LPM Le Petit Maison in Dubai.
+
+So I've got this AI agent for constructing a trip and we'll go to London from Boston and it's a four-day trip starting on Thursday April 11 going to April 14. So let's launch it. So we're going to go from Boston and London and we'll go Westminster since I think that's where you're staying. Date range April 11 through April 14 2024 just to be sure that it gets this year. Interests so let's say fine dining, theatre, shows and events. Okay I didn't put museums but let's go with that you can add museums pretty easily. Okay so this agent now it's interacting with ChatGPT the large language model so it's going to search April England temperature. What's on West End musical theatre buy tickets for West End Disney's Lion King is on it seems. Now it's going to get its local expert so this will go out now and look for shows etc. So it's still thinking theatre shows UK and Ireland tour no you don't really want to do that that'll take too long to go to Ireland as well. Okay Phantom of the Opera that be actually I like that one I don't know whether you would but I like that. So fine dining in Westminster so let's figure it out okay well it knows you're going to be there. Might as well start with local restaurants there's quite a number actually of Michelin star restaurants there and Nobu the Japanese I think it's got three in the London area. So I should have been more specific really about your tastes but unfortunately I don't know what they are so I'm just guessing. The great thing about this is it's pretty comprehensive and I know when I plan my trips I take weeks to plan them sometimes. Actually the last time I was in Dubai I went to a restaurant and it was rated I think there were about 8,000 restaurants in Dubai and it was rated number 200 and it was superb called LPM Le Petit Maison. Definitely worth going to if ever you go to Dubai. Okay let's see what we've got so I'll cut and paste this and send it to you I don't know how good it is let's see day one they've got you flying overnight which you may not do you may do a day flight I guess but okay I hope you enjoy your trip - Yep.
