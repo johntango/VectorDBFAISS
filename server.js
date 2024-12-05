@@ -3,7 +3,8 @@ import sqlite3 from 'sqlite3'; // SQLite for storing metadata and documents
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import getEmbedding from './embed.js';
+import { get } from 'http';
+import { tokenizeContent, getRelevantTokens, getEmbeddings } from './embed.js';
 
 // Define `__dirname` for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -39,11 +40,6 @@ const FAISS = {
     },
 };
 
-// Mock vectorization function
-async function vectorize(text) {
-    let vector = getEmbedding(text);
-    return vector; // Mock vector
-}
 
 // Serve the default web page
 app.get('/', (req, res) => {
@@ -140,8 +136,10 @@ app.get('/load-documents', async (req, res) => {
         for (const file of files) {
             const filePath = path.join(folderPath, file);
             const content = await fs.readFile(filePath, 'utf-8');
+            let tokens = tokenizeContent(content);
+            let relevantTokens = getRelevantTokens(tokens);
 
-            const vector = await vectorize(content);
+            const vector = await getEmbeddings(relevantTokens.join(' '));
             await new Promise((resolve, reject) => {
                 db.run(`INSERT INTO documents (content, vector) VALUES (?, ?)`, [content, Buffer.from(vector)], function (err) {
                     if (err) reject(err);

@@ -1,6 +1,12 @@
 {
   "dependencies": {
+    "csv-parser": "^3.0.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^16.4.7",
     "express": "^4.21.1",
+    "natural": "^8.0.1",
+    "node-html-parser": "^6.1.13",
+    "openai": "^4.76.0",
     "sqlite3": "^5.1.7"
   },
   "type": "module"
