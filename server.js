@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3'; // SQLite for storing metadata and documents
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import getEmbedding from './embed.js';
 
 // Define `__dirname` for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -40,7 +41,8 @@ const FAISS = {
 
 // Mock vectorization function
 async function vectorize(text) {
-    return text.split('').map((char) => char.charCodeAt(0) % 10); // Mock vector
+    let vector = getEmbedding(text);
+    return vector; // Mock vector
 }
 
 // Serve the default web page
