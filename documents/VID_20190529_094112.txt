@@ -1,1 +1,0 @@
-We are going to ask the number of people in the room and somebody can just ask one person, one kind of person, what number they have and the person will say yes or no, my number is something else.

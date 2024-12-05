@@ -99,7 +99,7 @@ app.get('/', (req, res) => {
                 async function loadDocuments() {
                     const res = await fetch('/load-documents');
                     const data = await res.json();
-                    document.getElementById('documents-output').innerText = JSON.stringify(data, null, 2);
+                    document.getElementById('documents-output').innerHTML = JSON.stringify(data, null, 2);
                 }
             </script>
         </body>
@@ -136,10 +136,11 @@ app.get('/load-documents', async (req, res) => {
         for (const file of files) {
             const filePath = path.join(folderPath, file);
             const content = await fs.readFile(filePath, 'utf-8');
-            let tokens = tokenizeContent(content);
-            let relevantTokens = getRelevantTokens(tokens);
+            let tokens = await tokenizeContent(content);
+            let relevantTokens = await getRelevantTokens(tokens);
 
             const vector = await getEmbeddings(relevantTokens.join(' '));
+            console.log(JSON.stringify(vector))
             await new Promise((resolve, reject) => {
                 db.run(`INSERT INTO documents (content, vector) VALUES (?, ?)`, [content, Buffer.from(vector)], function (err) {
                     if (err) reject(err);

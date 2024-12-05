@@ -141,7 +141,7 @@ async function getEmbeddings(tokens) {
     try {
         console.log("initiating openai api call");
         response = await openai.embeddings.create({
-            model: "text-embedding-3-small",
+            model: "text-embedding-ada-002",
             input: tokens,
             embedding_format: "float"
         });
@@ -150,7 +150,7 @@ async function getEmbeddings(tokens) {
         throw new Error("Error calling OpenAI API getEmbeddings");
     }
 
-    return response.data.embedding;
+    return response.data[0].embedding;
 }
 
 /**

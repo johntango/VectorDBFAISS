@@ -1,1 +1,0 @@
-This course integrates together the front end, the middleware and the back end and really covers all of the technologies that you'll need to understand to architect world-class apps.
