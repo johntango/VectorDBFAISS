@@ -204,79 +204,6 @@ async function calculateSimilarityScores(inputText, crawledData) {
     return similarityScores;
 }
 
-/**
- * Takes an input text string and crawled data as input.
- * Returns a string containing the answer to the input text question.
- * @param {string} inputText - The input text string.
- * @param {object} crawledData - The crawled data.
- * @returns {string} The answer to the input text question.
- */
-async function answerQuestion(inputText, crawledData) {
-    console.log("start answerQuestion");
-    if (!inputText) inputText = "What is the Lunarmail answer to life, the universe and everything?";
-    const similarityScores = await calculateSimilarityScores(
-        inputText,
-        crawledData
-    );
-
-    // Sort the similarity scores in descending order
-    similarityScores.sort((a, b) => b.similarityScore - a.similarityScore);
-
-    // Get the most relevant URL
-    const mostRelevantUrl = similarityScores[0].url;
-    console.log("mostRelevantUrl", mostRelevantUrl);
-
-    // Fetch the HTML content of the most relevant URL
-    let response;
-    let htmlContent;
-    try {
-        response = await axios.get(mostRelevantUrl);
-        htmlContent = response.data;
-    } catch (e) {
-        console.error("Error fetching URL:", mostRelevantUrl);
-        throw new Error("Error fetching URL");
-    }
-    const strippedContent = stripHtmlTags(htmlContent);
-
-    // Prepare the prompt for OpenAI's Codex
-    const promptStart = `Answer the question based on the context below, and if the question can't be answered based on the context, say "I don't know"\n\nContext: ${strippedContent}\n\n---\n\nQuestion: ${inputText}\nAnswer:`;
-    const availableTokens = 4096 - promptStart.length;
-
-    let prompt;
-    if (strippedContent.length > availableTokens) {
-        // cut the string to fit available tokens
-        prompt = `Answer the question based on the context below, and if the question can't be answered based on the context, make a guess"\n\nContext: ${strippedContent.slice(0, availableTokens)}\n\n---\n\nQuestion: ${inputText}\nAnswer:`;
-    } else {
-        prompt = promptStart;
-    }
-
-    // Call the OpenAI API
-    let apiResponse;
-    try {
-        console.log("initiating openai api call");
-        apiResponse = await openai.completions.create({
-            model: "gpt-3.5-turbo-instruct",
-            prompt: prompt,
-            max_tokens: 2000,
-            n: 1,
-            stop: null,
-            temperature: 1.0, //higher temp gives a more creative and diverse output
-        });
-    } catch (e) {
-        console.error(
-            "Error calling OpenAI API answerQuestion createCompletion:",
-            e.response.data.error
-        );
-        throw new Error("Error calling OpenAI API answerQuestion createCompletion");
-    }
-
-    console.log("finish answerQuestion");
-    // Extract and return the answer from the response
-    const answer = apiResponse?.choices[0]?.text?.trim();
-    return answer;
-}
-
-
 function stripHtmlTags(htmlContent) {
     // Regular expression to match HTML tags and other irrelevant content
     const regex = /(<([^>]+)>|\[.*?\])/gi;
@@ -287,30 +214,31 @@ function stripHtmlTags(htmlContent) {
     // Return the stripped content
     return strippedContent;
 }
-async function getAnswer(prompt){
-            // Call the OpenAI API
-        prompt = `Answer the question based on the context below, and if the question can't be answered based on the context, make a guess"\n\nContext: ${prompt}\n\n---\n\nQuestion: ${prompt}\nAnswer:`;
-        let apiResponse;
-        try {
-            console.log(`initiating openai api call : ${prompt}`);
-            apiResponse = await openai.completions.create({
-                model: "gpt-3.5-turbo-instruct",
-                prompt: prompt,
-                max_tokens: 2000,
-                n: 1,
-                stop: null,
-                temperature: 1.0, //higher temp gives a more creative and diverse output
-            });
-            const answer = apiResponse.choices[0].text.trim();
-            console.log(`GPT answer:  ${answer}`);
-            return answer;
-        } catch (e) {
-            console.error(
-                "Error calling OpenAI API answerQuestion createCompletion:",
-                e.response.data.error
-            );
-            throw new Error("Error calling OpenAI API answerQuestion createCompletion");
-        }
+async function getAnswer(context, question) {
+    let prompt = `Answer the question based on the context below. If the question can't be answered based on the context, make a reasonable guess.\n Context: ${context}\n---\n\nQuestion: ${question}\nAnswer:`;
+    // chekc that the prompt is not too long
+    if (prompt.length > 10000) {
+        throw new Error(`Prompt is too long: ${prompt.length} characters`);
+    }
+    let response;
+    let answer;
+    try {
+        console.log(`Initiating OpenAI API call with prompt: ${prompt}`);
+        response = await openai.completions.create({
+            model: "gpt-3.5-turbo-instruct",
+            prompt: prompt,
+            max_tokens: 10000,
+            n: 1,
+            stop: null,
+            temperature: 0.4,
+        });
+        answer = response.choices[0].text.trim();
+        console.log(`GPT Answer: ${answer}`);
+        return answer;
+    } catch (e) {
+        console.error("Error calling OpenAI API:", e?.response?.data?.error);
+    }
 }
 
-export {tokenizeContent, getRelevantTokens,getEmbeddings, getAnswer};
+
+export {getEmbeddings, getAnswer};

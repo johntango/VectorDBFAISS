@@ -5,7 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { get } from 'http';
 
-import { tokenizeContent, getRelevantTokens, getEmbeddings, getAnswer } from './embed.js';
+import {  getEmbeddings, getAnswer } from './embed.js';
+
 
 
 // Define `__dirname` for ES modules
@@ -61,6 +62,18 @@ const FAISS = {
 
 // sync FAISS
 const synchronizeFAISS = () => {
+    // check if the table exists and if it has any documents
+    db.get(`SELECT COUNT(*) as count FROM documents`, (err, row) => {
+        if (err) {
+            console.error('Error checking for existing documents:', err);
+            return;
+        }
+    // if no documents, return  
+        if (row.count === 0) {
+            console.log('No documents found in SQLite database.');
+            return;
+        }
+    // if documents exist, retrieve them and add to FAISS index
 
         db.all(`SELECT id, vector FROM documents`, [], (err, rows) => {
             if (err) {
@@ -75,6 +88,7 @@ const synchronizeFAISS = () => {
             });
 
             console.log(`Synchronized FAISS with ${rows.length} documents from SQLite.`);
+    });
     });
 };
 
@@ -150,83 +164,103 @@ app.get('/load-documents', async (req, res) => {
     const folderPath = path.join(__dirname, 'documents');
 
     try {
-        const files = await fs.readdir(folderPath);
+        const files = await fs.readdir(folderPath); // Get list of files
         const results = [];
 
         for (const file of files) {
             const filePath = path.join(folderPath, file);
-            const content = await fs.readFile(filePath, 'utf-8');
-            console.log('Processing conent :', content);
-            const vector = await getEmbeddings(content);
+            const content = await fs.readFile(filePath, 'utf-8'); // Read file content
+            console.log('Processing content:', content);
 
-            await new Promise((resolve, reject) => {
+            // Get embeddings for the content
+            const vector = await getEmbeddings(content); // Assume this returns a numerical array
+            const vectorBuffer = Buffer.from(new Float32Array(vector).buffer); // Convert to binary data
+
+            // Insert into SQLite and FAISS
+            const documentResult = await new Promise((resolve, reject) => {
                 db.run(
                     `INSERT OR IGNORE INTO documents (content, vector) VALUES (?, ?)`,
-                    [content, Buffer.from(vector)],
+                    [content, vectorBuffer],
                     function (err) {
-                        if (err) reject(err);
+                        if (err) return reject(err); // Reject promise on error
 
                         if (this.changes > 0) {
+                            // Add vector to FAISS and resolve with document ID
                             FAISS.add(vector, this.lastID);
-                            results.push({ docId: this.lastID, file });
+                            resolve({ message: 'Document added.', docId: this.lastID });
+                        } else {
+                            // Document already exists
+                            resolve({ message: 'Document already exists.' });
                         }
-                        resolve();
                     }
                 );
             });
+
+            results.push(documentResult); // Add the result to the array
         }
 
         const count = results.length;
         res.json({ message: `Loaded ${count} documents.`, results });
     } catch (err) {
+        console.error('Error loading documents:', err);
         res.status(500).json({ error: 'Error loading documents.', details: err.message });
     }
 });
 
 app.post('/search', async (req, res) => {
-    const { query, k = 5 } = req.body;
+    const { query, k = 1} = req.body;
     if (!query) return res.status(400).json({ error: 'Query is required' });
 
     try {
         const queryVector = await getEmbeddings(query); // Generate query vector
-        const results = [];
+     // We should use FAISS here to search for similar documents
+     
+        let results = [];
 
-        db.all(`SELECT id, content, vector FROM documents`, [], (err, rows) => {
-            if (err) return res.status(500).json({ error: 'Error fetching documents.' });
-
-            rows.forEach((row) => {
-                // Convert BLOB back to Float32Array
-                const vector = Array.from(new Float32Array(row.vector.buffer)); // Convert to array
-
-                // Compute cosine similarity
-                const cosineSimilarity = (vecA, vecB) => {
-                    const dotProduct = vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
-                    const magnitudeA = Math.sqrt(vecA.reduce((sum, val) => sum + val ** 2, 0));
-                    const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val ** 2, 0));
-                    return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0;
-                };
-
-                const score = cosineSimilarity(queryVector, vector);
-                results.push({ docId: row.id, content: row.content, score });
-            });
-
-            // Sort by score and limit to top k
-            const topResults = results.sort((a, b) => b.score - a.score).slice(0, k);
-
-            // Prepare GPT prompt
-            const prompt = `Query: ${query}\nDocuments:\n${topResults
-                .map((r, i) => `${i + 1}. ${r.content}`)
-                .join('\n')}`;
-            console.log("Query prompt", prompt);
-            // Get answer from GPT
-            getAnswer(prompt).then((answer) => {
-                res.json({ prompt, results: topResults, answer });
+        // Fetch all documents and calculate similarity
+        const rows = await new Promise((resolve, reject) => {
+            db.all(`SELECT id, content, vector FROM documents`, [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows);
             });
         });
+
+        rows.forEach((row) => {
+            // Convert BLOB back to Float32Array
+            const vector = Array.from(new Float32Array(row.vector.buffer)); // Convert to array
+
+            // Compute cosine similarity
+            const cosineSimilarity = (vecA, vecB) => {
+                const dotProduct = vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
+                const magnitudeA = Math.sqrt(vecA.reduce((sum, val) => sum + val ** 2, 0));
+                const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val ** 2, 0));
+                return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0;
+            };
+
+            const score = cosineSimilarity(queryVector, vector);
+            results.push({ docId: row.id, content: row.content, score });
+        });
+
+        // Sort by score and limit to top k
+        const topResults = results.sort((a, b) => b.score - a.score).slice(0, k);
+
+        // Build the context for GPT
+        let context = topResults
+            .map((r, i) => `${i + 1}. ${r.content}`)
+            .join('\n');
+        console.log("Generated Context:", context);
+
+        // Call OpenAI to get the answer
+        const answer = await getAnswer(context, query);
+
+        // Return the results and the GPT answer
+        res.json({ results: topResults, answer });
     } catch (err) {
+        console.error("Error in /search:", err);
         res.status(500).json({ error: 'Error processing query.', details: err.message });
     }
 });
+
 
 
 // Fetch all documents (for debugging)
