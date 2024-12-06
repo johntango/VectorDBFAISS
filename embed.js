@@ -145,12 +145,13 @@ async function getEmbeddings(tokens) {
             input: tokens,
             embedding_format: "float"
         });
+        return response.data[0].embedding;
     } catch (e) {
         console.error("Error calling OpenAI API getEmbeddings:", e?.response?.data[0]);
         throw new Error("Error calling OpenAI API getEmbeddings");
     }
 
-    return response.data[0].embedding;
+    
 }
 
 /**
@@ -286,5 +287,30 @@ function stripHtmlTags(htmlContent) {
     // Return the stripped content
     return strippedContent;
 }
+async function getAnswer(prompt){
+            // Call the OpenAI API
+        prompt = `Answer the question based on the context below, and if the question can't be answered based on the context, make a guess"\n\nContext: ${prompt}\n\n---\n\nQuestion: ${prompt}\nAnswer:`;
+        let apiResponse;
+        try {
+            console.log(`initiating openai api call : ${prompt}`);
+            apiResponse = await openai.completions.create({
+                model: "gpt-3.5-turbo-instruct",
+                prompt: prompt,
+                max_tokens: 2000,
+                n: 1,
+                stop: null,
+                temperature: 1.0, //higher temp gives a more creative and diverse output
+            });
+            const answer = apiResponse.choices[0].text.trim();
+            console.log(`GPT answer:  ${answer}`);
+            return answer;
+        } catch (e) {
+            console.error(
+                "Error calling OpenAI API answerQuestion createCompletion:",
+                e.response.data.error
+            );
+            throw new Error("Error calling OpenAI API answerQuestion createCompletion");
+        }
+}
 
-export {tokenizeContent, getRelevantTokens,getEmbeddings};
+export {tokenizeContent, getRelevantTokens,getEmbeddings, getAnswer};
