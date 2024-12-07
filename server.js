@@ -321,7 +321,7 @@ app.get('/', (req, res) => {
                     const res = await fetch('/search', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query, k: 1 })
+                        body: JSON.stringify({ query, k: 2 })
                     });
                     const data = await res.json();
                     document.getElementById('search-output').innerText = JSON.stringify(data, null, 2);
