@@ -11,8 +11,6 @@ import natural from "natural";
 
 import { OpenAI } from "openai";
 
-const MAXCOUNT = 10;
-
 dotenv.config();
 // get local directory path
 
@@ -150,8 +148,6 @@ async function getEmbeddings(tokens) {
         console.error("Error calling OpenAI API getEmbeddings:", e?.response?.data[0]);
         throw new Error("Error calling OpenAI API getEmbeddings");
     }
-
-    
 }
 
 /**
@@ -161,61 +157,8 @@ async function getEmbeddings(tokens) {
  * @param {number[]} b - The second array of numbers.
  * @returns {number} The cosine similarity between the two arrays.
  */
-function cosineSimilarity(a, b) {
-    if (!a || !b) return;
-    console.log("start cosineSimilarity", a, b);
-    const dotProduct = a.reduce((sum, _, i) => sum + a[i] * b[i], 0);
-    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-    return dotProduct / (magnitudeA * magnitudeB);
-}
-
-/**
- * Takes an input text string and crawled data as input.
- * Returns an array of similarity scores along with their corresponding URLs.
- * @param {string} inputText - The input text string.
- * @param {object} crawledData - The crawled data.
- * @returns {object[]} The array of similarity scores along with their corresponding URLs.
- */
-async function calculateSimilarityScores(inputText, crawledData) {
-    console.log("start calculateSimilarityScores");
-    const inputTokens = await tokenizeContent(inputText);
-    const inputRelevantTokens = await getRelevantTokens(inputTokens);
-    const inputEmbedding = await getEmbeddings(inputRelevantTokens)[0];
-
-    const similarityScores = [];
-
-    for (const { url, tokens } of crawledData.contents) {
-        const relevantTokens = await getRelevantTokens(tokens);
-        const contentEmbedding = await getEmbeddings(relevantTokens)[0];
-
-        const avgEmbedding = [];
-        for (let i = 0; i < inputEmbedding?.length; i++) {
-            avgEmbedding[i] = (inputEmbedding[i] + contentEmbedding[i]) / 2;
-        }
-
-        const similarityScore =
-            cosineSimilarity(inputEmbedding, avgEmbedding) *
-            cosineSimilarity(contentEmbedding, avgEmbedding);
-        similarityScores.push({ url, similarityScore });
-    }
-
-    console.log("finish calculateSimilarityScores");
-    return similarityScores;
-}
-
-function stripHtmlTags(htmlContent) {
-    // Regular expression to match HTML tags and other irrelevant content
-    const regex = /(<([^>]+)>|\[.*?\])/gi;
-
-    // Replace all matches with an empty string
-    const strippedContent = htmlContent.replace(regex, "");
-
-    // Return the stripped content
-    return strippedContent;
-}
 async function getAnswer(context, question) {
-    let prompt = `Answer the question based on the context below. If the question can't be answered based on the context, make a reasonable guess.\n Context: ${context}\n---\n\nQuestion: ${question}\nAnswer:`;
+    let prompt = `Answer the question based on the context below. If the question can't be answered based on the context, make a reasonable guess.\n Context: ${context}\nQuestion: ${question}\nAnswer:`;
     // chekc that the prompt is not too long
     if (prompt.length > 10000) {
         throw new Error(`Prompt is too long: ${prompt.length} characters`);
@@ -224,15 +167,11 @@ async function getAnswer(context, question) {
     let answer;
     try {
         console.log(`Initiating OpenAI API call with prompt: ${prompt}`);
-        response = await openai.completions.create({
-            model: "gpt-3.5-turbo-instruct",
-            prompt: prompt,
-            max_tokens: 10000,
-            n: 1,
-            stop: null,
-            temperature: 0.4,
+        response = await openai.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "gpt-4o",
         });
-        answer = response.choices[0].text.trim();
+        answer = response.choices[0].message.content
         console.log(`GPT Answer: ${answer}`);
         return answer;
     } catch (e) {

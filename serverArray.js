@@ -3,15 +3,15 @@ import sqlite3 from 'sqlite3'; // SQLite for storing metadata and documents
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { get } from 'http';
+import { create, all } from 'mathjs';
+import {  getEmbeddings, getAnswer } from './embedArray.js';
 
-import {  getEmbeddings, getAnswer } from './embed.js';
-
-
+const math = create(all);
 
 // Define `__dirname` for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ALENGTH = 5;
 
 const app = express();
 app.use(express.json());
@@ -32,48 +32,47 @@ const db = new sqlite3.Database('./vectors.db', (err) => {
     }
 });
 
-// FAISS mock implementation with cosine similarity
+// FAISS mock implementation with math.js for cosine similarity
 const FAISS = {
     index: [],
 
-    add: (vector, docId) => {
+    add: (vec, docId) => {
+        let vector = vec.slice(0,ALENGTH)
         FAISS.index.push({ vector, docId });
-        console.log(`Added document with ID ${docId} to FAISS index. vector: ${vector[0]}`);
+        console.log(`Added document with ID ${docId} to FAISS index.`);
     },
 
     search: (queryVector, k) => {
         const cosineSimilarity = (vecA, vecB) => {
-            const dotProduct = vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
-            const magnitudeA = Math.sqrt(vecA.reduce((sum, val) => sum + val ** 2, 0));
-            const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val ** 2, 0));
+            const dotProduct = math.dot(vecA, vecB);
+            const magnitudeA = math.norm(vecA, 2); // Euclidean norm
+            const magnitudeB = math.norm(vecB, 2); // Euclidean norm
             return dotProduct / (magnitudeA * magnitudeB);
         };
+
         if (FAISS.index.length === 0) return [];
         const results = FAISS.index.map((item) => ({
             docId: item.docId,
-            score: cosineSimilarity(queryVector, item.vector),
+            score: cosineSimilarity(item.vector, queryVector),
         }));
-
-        return results
-            .sort((a, b) => b.score - a.score)
-            .slice(0, k);
+        let res = results.sort((a, b) => b.score - a.score).slice(0, k);
+        console.log(`Context Documents: ${JSON.stringify(res)}`);
+        return res;
     },
 };
 
-// sync FAISS
+// Synchronize FAISS with the SQLite database
 const synchronizeFAISS = () => {
-    // check if the table exists and if it has any documents
     db.get(`SELECT COUNT(*) as count FROM documents`, (err, row) => {
         if (err) {
             console.error('Error checking for existing documents:', err);
             return;
         }
-    // if no documents, return  
+
         if (row.count === 0) {
             console.log('No documents found in SQLite database.');
             return;
         }
-    // if documents exist, retrieve them and add to FAISS index
 
         db.all(`SELECT id, vector FROM documents`, [], (err, rows) => {
             if (err) {
@@ -82,21 +81,14 @@ const synchronizeFAISS = () => {
             }
 
             rows.forEach((row) => {
-                const vector = Array.from(new Float32Array(row.vector.buffer)); // Convert blob back to vector
-                console.log("FAISS retrieve from SQL vector", vector[0]);
-                FAISS.add(vector, row.id); // Add to FAISS index
+                const vector = new Float32Array(row.vector.buffer); // Convert blob back to vector
+                FAISS.add(Array.from(vector.slice(0,ALENGTH)), row.id); // Add to FAISS index
             });
 
             console.log(`Synchronized FAISS with ${rows.length} documents from SQLite.`);
-    });
+        });
     });
 };
-
-
-// Mock vectorization function
-//async function vectorize(text) {
-//   return text.split('').map((char) => char.charCodeAt(0) % 10); // Mock vector
-//}
 
 app.post('/add', async (req, res) => {
     const { content } = req.body;
@@ -108,7 +100,7 @@ app.post('/add', async (req, res) => {
 
         db.run(
             `INSERT OR IGNORE INTO documents (content, vector) VALUES (?, ?)`,
-            [content, vectorBuffer], // Store binary data
+            [content, vectorBuffer],
             function (err) {
                 if (err) return res.status(500).json({ error: 'Error adding document.' });
 
@@ -125,29 +117,7 @@ app.post('/add', async (req, res) => {
     }
 });
 
-// Get document count
 app.get('/count-documents', (req, res) => {
-    console.log("Counting documents...");
-
-    // Step 1: Retrieve all vectors and log them
-    db.all(`SELECT id, vector FROM documents`, [], (err, rows) => {
-        if (err) {
-            console.error("Error retrieving documents:", err);
-            return res.status(500).json({ error: 'Error retrieving documents.' });
-        }
-
-        rows.forEach((row) => {
-            try {
-                // Convert blob back to Float32Array
-                const vector = Array.from(new Float32Array(row.vector.buffer));
-                console.log(`Document ID: ${row.id}, Vector: ${JSON.stringify(vector[0])}`);
-            } catch (conversionError) {
-                console.error(`Error converting vector for Document ID: ${row.id}`, conversionError);
-            }
-        });
-    });
-
-    // Step 2: Count the total number of documents
     db.get(`SELECT COUNT(*) as count FROM documents`, (err, row) => {
         if (err) {
             console.error("Error retrieving document count:", err);
@@ -158,71 +128,18 @@ app.get('/count-documents', (req, res) => {
     });
 });
 
-
-// Load all documents from folder
-app.get('/load-documents', async (req, res) => {
-    const folderPath = path.join(__dirname, 'documents');
-
-    try {
-        const files = await fs.readdir(folderPath); // Get list of files
-        const results = [];
-
-        for (const file of files) {
-            const filePath = path.join(folderPath, file);
-            const content = await fs.readFile(filePath, 'utf-8'); // Read file content
-            console.log('Processing content:', content);
-
-            // Get embeddings for the content
-            const vector = await getEmbeddings(content); // Assume this returns a numerical array
-            const vectorBuffer = Buffer.from(new Float32Array(vector).buffer); // Convert to binary data
-
-            // Insert into SQLite and FAISS
-            const documentResult = await new Promise((resolve, reject) => {
-                db.run(
-                    `INSERT OR IGNORE INTO documents (content, vector) VALUES (?, ?)`,
-                    [content, vectorBuffer],
-                    function (err) {
-                        if (err) return reject(err); // Reject promise on error
-
-                        if (this.changes > 0) {
-                            // Add vector to FAISS and resolve with document ID
-                            FAISS.add(vector, this.lastID);
-                            resolve({ message: 'Document added.', docId: this.lastID });
-                        } else {
-                            // Document already exists
-                            resolve({ message: 'Document already exists.' });
-                        }
-                    }
-                );
-            });
-
-            results.push(documentResult); // Add the result to the array
-        }
-
-        const count = results.length;
-        res.json({ message: `Loaded ${count} documents.`, results });
-    } catch (err) {
-        console.error('Error loading documents:', err);
-        res.status(500).json({ error: 'Error loading documents.', details: err.message });
-    }
-});
-
 app.post('/search', async (req, res) => {
-    const { query, k=1 } = req.body;
-    
+    const { query, k = 1 } = req.body;
+
     if (!query) return res.status(400).json({ error: 'Query is required' });
 
     try {
-        // Step 1: Generate query vector
         const queryVector = await getEmbeddings(query); // Assume this returns a numerical array
+        let qVec = queryVector.slice(0,ALENGTH)
+        const faissResults = FAISS.search(qVec, k);
 
-        // Step 2: Use FAISS to search for the top-k similar documents
-        console.log("Querying FAISS with query vector...");
-        const faissResults = FAISS.search(queryVector, k); // FAISS returns top-k document IDs and scores
-
-        // Step 3: Retrieve document contents for the top-k results
         const documentIds = faissResults.map((result) => result.docId);
-        const placeholders = documentIds.map(() => '?').join(','); // Prepare SQL placeholders for IN clause
+        const placeholders = documentIds.map(() => '?').join(',');
         const topDocuments = await new Promise((resolve, reject) => {
             db.all(
                 `SELECT id, content FROM documents WHERE id IN (${placeholders})`,
@@ -234,38 +151,23 @@ app.post('/search', async (req, res) => {
             );
         });
 
-        // Map FAISS results to their corresponding document content
         const topResults = faissResults.map((result) => {
             const document = topDocuments.find((doc) => doc.id === result.docId);
             return { ...result, content: document ? document.content : null };
         });
 
-        // Step 4: Build the context for GPT
         const context = topResults
-            .filter((result) => result.content) // Ensure content exists
+            .filter((result) => result.content)
             .map((result, i) => `${i + 1}. ${result.content}`)
             .join('\n');
 
-        // Step 5: Call OpenAI to get the answer
         const answer = await getAnswer(context, query);
 
-        // Step 6: Return the results and the GPT answer
-        res.json({ query: query, answer });
+        res.json({ query, answer });
     } catch (err) {
         console.error("Error in /search:", err);
         res.status(500).json({ error: 'Error processing query.', details: err.message });
     }
-});
-
-
-
-
-// Fetch all documents (for debugging)
-app.get('/documents', (req, res) => {
-    db.all(`SELECT * FROM documents`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Error fetching documents.' });
-        res.json(rows);
-    });
 });
 
 
@@ -321,7 +223,7 @@ app.get('/', (req, res) => {
                     const res = await fetch('/search', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query, k: 1 })
+                        body: JSON.stringify({ query, k: 2 })
                     });
                     const data = await res.json();
                     document.getElementById('search-output').innerText = JSON.stringify(data, null, 2);
