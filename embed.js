@@ -179,5 +179,31 @@ async function getAnswer(context, question) {
     }
 }
 
+// Function to chunk text into N tokens with M overlap
+function chunkText(text, N, M) {
+    const words = text.split(/\s+/);
+    const chunks = [];
 
-export {getEmbeddings, getAnswer};
+    for (let i = 0; i < words.length; i += (N - M)) {
+        const chunk = words.slice(i, i + N).join(' ');
+        chunks.push(chunk);
+        // Ensure overlap only occurs until the end of the text
+        if (i + N >= words.length) break;
+    }
+
+    return chunks;
+}
+
+// Function to process a text file
+async function processTextFile(fileContent, chunkSize) {
+    try {
+        // Chunk the text
+        const chunks = chunkText(fileContent, chunkSize,50);
+        console.log(`File split into ${chunks.length} chunks.`);
+        return chunks;
+    } catch (err) {
+        console.error('Error processing text file:', err);
+    }
+}
+
+export {getEmbeddings, getAnswer,processTextFile};

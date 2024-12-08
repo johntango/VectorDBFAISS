@@ -5,7 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { get } from 'http';
 
-import {  getEmbeddings, getAnswer } from './embed.js';
+import {  getEmbeddings, getAnswer, processTextFile } from './embed.js';
+import { add } from 'mathjs';
 
 
 
@@ -101,26 +102,23 @@ const synchronizeFAISS = () => {
 app.post('/add', async (req, res) => {
     const { content } = req.body;
     if (!content) return res.status(400).json({ error: 'Content is required' });
-
     try {
-        const vector = await getEmbeddings(content); // Assume this returns a numerical array
-        const vectorBuffer = Buffer.from(new Float32Array(vector).buffer); // Convert to binary data
-
-        db.run(
-            `INSERT OR IGNORE INTO documents (content, vector) VALUES (?, ?)`,
-            [content, vectorBuffer], // Store binary data
-            function (err) {
-                if (err) return res.status(500).json({ error: 'Error adding document.' });
-
-                if (this.changes > 0) {
-                    FAISS.add(vector, this.lastID); // Add to FAISS index
-                    res.json({ message: 'Document added.', docId: this.lastID });
-                } else {
-                    res.json({ message: 'Document already exists.' });
-                }
+        let chunks = await processTextFile(content, 1000);
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            // get filename and strip of extension for chunk name
+            let file = `chunks${i}.txt`;
+            const chunkName = `${file.split('.').slice(0, -1).join('.')}_chunk_${i + 1}`;
+            console.log(`Processing chunk: ${chunkName}`);
+            // Write to SQLite and FAISS
+            let documentResult = await addDocumentToDB(chunk, chunkName)
+            if (documentResult.changes > 0) {
+                res.json({ message: 'Document already exists.' });
             }
-        );
-    } catch (err) {
+        res.json({ message: 'Document added.', docId: this.lastID });
+        } 
+    }
+    catch (err) {
         res.status(500).json({ error: 'Error processing document.' });
     }
 });
@@ -171,34 +169,18 @@ app.get('/load-documents', async (req, res) => {
             const filePath = path.join(folderPath, file);
             const content = await fs.readFile(filePath, 'utf-8'); // Read file content
             console.log('Processing content:', content);
-
-            // Get embeddings for the content
-            const vector = await getEmbeddings(content); // Assume this returns a numerical array
-            const vectorBuffer = Buffer.from(new Float32Array(vector).buffer); // Convert to binary data
-
-            // Insert into SQLite and FAISS
-            const documentResult = await new Promise((resolve, reject) => {
-                db.run(
-                    `INSERT OR IGNORE INTO documents (content, vector) VALUES (?, ?)`,
-                    [content, vectorBuffer],
-                    function (err) {
-                        if (err) return reject(err); // Reject promise on error
-
-                        if (this.changes > 0) {
-                            // Add vector to FAISS and resolve with document ID
-                            FAISS.add(vector, this.lastID);
-                            resolve({ message: 'Document added.', docId: this.lastID });
-                        } else {
-                            // Document already exists
-                            resolve({ message: 'Document already exists.' });
-                        }
-                    }
-                );
-            });
-
-            results.push(documentResult); // Add the result to the array
+            let chunks = await processTextFile(content, 1000);
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                // get filename and strip of extension for chunk name
+                const chunkName = `${file.split('.').slice(0, -1).join('.')}_chunk_${i + 1}`;
+                console.log(`Processing chunk: ${chunkName}`);
+    
+                // Write to SQLite and FAISS
+                let documentResult = await addDocumentToDB(chunk, chunkName);
+                results.push(documentResult); // Add the result to the array
+            }
         }
-
         const count = results.length;
         res.json({ message: `Loaded ${count} documents.`, results });
     } catch (err) {
@@ -206,6 +188,31 @@ app.get('/load-documents', async (req, res) => {
         res.status(500).json({ error: 'Error loading documents.', details: err.message });
     }
 });
+async function addDocumentToDB(content) {
+    const vector = await getEmbeddings(content);
+    // Convert vector to binary for SQLite
+    const vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
+    // Insert into SQLite and FAISS
+    let documentResult = await new Promise((resolve, reject) => {
+        db.run(
+            `INSERT OR IGNORE INTO documents (content, vector) VALUES (?, ?)`,
+            [content, vectorBuffer],
+            function (err) {
+                if (err) return reject(err); // Reject promise on error
+
+                if (this.changes > 0) {
+                    // Add vector to FAISS and resolve with document ID
+                    FAISS.add(vector, this.lastID);
+                    resolve({ message: 'Document added.', docId: this.lastID });
+                } else {
+                    // Document already exists
+                    resolve({ message: 'Document already exists.' });
+                }
+            }
+        );
+    });
+    return documentResult;
+}
 
 app.post('/search', async (req, res) => {
     const { query, k=1 } = req.body;
