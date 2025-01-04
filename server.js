@@ -115,8 +115,8 @@ app.post('/add', async (req, res) => {
             if (documentResult.changes > 0) {
                 res.json({ message: 'Document already exists.' });
             }
-        res.json({ message: 'Document added.', docId: this.lastID });
         } 
+        res.json({ message: 'Document added.'});
     }
     catch (err) {
         res.status(500).json({ error: 'Error processing document.' });

@@ -1,6 +1,6 @@
 # VectorDBFAISS
 
-John R Williams MIT author
+John R Williams jrw@mit.edu MIT author
 This code uses OpenAI API to embed documents and store both locally eg on your own machine or on your own Cloud based machine. This provides a means of keeping your GAN private and not hosting it on say OpenAI, Azure or AWS.
 This code is most easily run in CodeSpaces directly from your GitHub Repo. You will need to provide an OpenAI API Key in your Repo in Settings->Codespaces secrets->OPENAI_API_KEY or alter the code so the key is available.  You could alter the code to use your own embeddings. 
 The hyper-parameters involved in chunking are chunk size and size of overlap of chunks, can be easily set. 
